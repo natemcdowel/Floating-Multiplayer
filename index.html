@@ -21,8 +21,7 @@
 <script>
 
 // Socket stuffs
-var url = 'http://10.10.10.100:80';
-var id = Math.round($.now()*Math.random());
+var url = 'http://50.50.50.100:8080'; 
 var clients = {};
 var cursors = {};
 var socket = io.connect(url);
@@ -72,11 +71,16 @@ var POP = {
     ua:  null,
     android: null,
     ios:  null,
+    socketAttr: ['type','r','speed','x','y','wavesize','xConstant','remove'],
 
     init: function() {
 
         POP.socketON = false;
-   
+        // Assign user ID
+        socket.on('assignid', function (userID) { 
+          POP.userID = userID;
+        });  
+        //console.log(POP.userID);
         // the proportion of width to height
         POP.RATIO = POP.WIDTH / POP.HEIGHT;
         // these will change when the screen is resize
@@ -193,12 +197,15 @@ var POP = {
 
         // decrease our nextBubble counter
         POP.nextBubble -= 1;
-        // if the counter is less than zero
-        if (POP.nextBubble < 0) {
-            // put a new instance of bubble into our entities array
-            POP.entities.push(new POP.Bubble());
-            // reset the counter with a random value
-            POP.nextBubble = ( Math.random() * 100 ) + 100;
+
+        if (POP.userID == 0) {
+          // if the counter is less than zero
+          if (POP.nextBubble < 0) {
+              // put a new instance of bubble into our entities array
+              POP.entities.push(new POP.Bubble());
+              // reset the counter with a random value
+              POP.nextBubble = ( Math.random() * 100 ) + 100;
+          }
         }
 
         // spawn a new instance of Touch
@@ -216,15 +223,34 @@ var POP = {
             checkCollision = true;
         }
 
-        
+        if (POP.userID > 0) {
+          socket.on('moving', function (data) {
+            for (i = 0; i < data.length; i += 1) {
+              for (z = 0; z < POP.socketAttr.length; z += 1) {
+                if (data[i] && typeof(data[i][POP.socketAttr[z]]) != 'undefined') {
+                  if (!POP.entities[i]) {
+                    POP.entities[i] = new POP.Bubble();
+                  }
+                  POP.entities[i][POP.socketAttr[z]] = data[i][POP.socketAttr[z]];
+                }
+              }
+            }
+           // console.log(POP.entities);
+          });
+        }
 
         // cycle through all entities and update as necessary
         for (i = 0; i < POP.entities.length; i += 1) {
+            //console.log(POP.entities);
+             POP.entities[i].update();
+            // if (!POP.socketON || POP.userID == 0) {
+            //     POP.entities[i].update();
+            // }
+            // else {
+            //     console.log('here');
 
-            if (POP.socketON == false)
-                POP.entities[i].update();
-            else 
-            this.socketFromServer();
+            //     POP.entities[i].update();
+            // }
 
             if (POP.entities[i].type === 'bubble' && checkCollision) {
                 hit = POP.collides(POP.entities[i], 
@@ -258,7 +284,7 @@ var POP = {
         // update wave offset
         // feel free to play with these values for
         // either slower or faster waves
-        POP.wave.time = new Date().getTime() * 0.002;
+        POP.wave.time = 0.002; //new Date().getTime() ;
         POP.wave.offset = Math.sin(POP.wave.time * 0.8) * 5;
 
         // calculate accuracy
@@ -267,25 +293,27 @@ var POP = {
             0 :
             ~~(POP.score.accuracy); // a handy way to round floats
 
-        POP.socketToServer();
+        if (POP.userID == 0) {
+          POP.socketToServer();
+        }
     },
 
     socketToServer: function() { 
 
         var self = this;
+        //console.log(POP.entities);
         socket.emit('mousemove',POP.entities);
         POP.socketON = true;
 
     },
 
-    socketFromServer: function() {
+    // socketFromServer: function() {
 
-        socket.on('moving', function (data) 
-        {
-            POP.entities = data;
-            console.log(POP.entities);
-        });
-    },
+    //     socket.on('moving', function (data) 
+    //     {
+    //         POP.entities = data;
+    //     });
+    // },
 
 
     // this is where we draw all the entities
@@ -317,7 +345,6 @@ var POP = {
         POP.Draw.text('Accuracy: ' + POP.score.accuracy + '%', 20, 70, 14, '#fff');
 
     },
-
 
     // the actual loop
     // requests animation frame
@@ -444,7 +471,7 @@ POP.Bubble = function() {
     this.update = function() {
 
         // a sine wave is commonly a function of time
-        var time = new Date().getTime() * 0.002;
+        var time = 0.002 //new Date().getTime() ;
 
         this.y -= this.speed;
         // the x coord to follow a sine wave
@@ -516,7 +543,7 @@ POP.Particle = function(x, y,r, col) {
 window.addEventListener('load', POP.init, false);
 window.addEventListener('resize', POP.resize, false);
 setInterval(function(){
-    console.log(POP.entities);
+    //console.log(POP.entities);
 },2000);
 </script>
 
