@@ -13,6 +13,7 @@ server.listen(8080);
 io.set('log level', 1);
 
 var userID = 0;
+var entities = [];
 
 // Listen for incoming connections from clients
 io.sockets.on('connection', function (socket) {
@@ -20,14 +21,18 @@ io.sockets.on('connection', function (socket) {
 	// Assign and imcrement userID on connection
 	socket.emit('assignid',userID);
 	userID++;
+	
+	// Server update loop
+  setInterval(function(){
+  	console.log(entities);
+		io.sockets.emit('moving', entities);
+  }, 15);  
 
 	// Start listening for mouse move events
-	socket.on('mousemove', function (data) {
-		
-		console.log(data);
-		// This line sends the event (broadcasts it)
-		// to everyone except the originating client.
-		io.sockets.emit('moving', data);
-		//console.log(data);
+	socket.on('sendmove', function (data) {
+		entities = data;
+	});
+	socket.on('removeEntity', function (i) {
+		entities[i].remove = true;
 	});
 });

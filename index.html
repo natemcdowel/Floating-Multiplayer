@@ -21,11 +21,12 @@
 <script>
 
 // Socket stuffs
-var url = 'http://50.50.50.100:8080'; 
+var url = window.location.host; 
 var clients = {};
 var cursors = {};
 var socket = io.connect(url);
 
+console.log(window.location);
 // http://paulirish.com/2011/requestanimationframe-for-smart-animating
 // shim layer with setTimeout fallback
 window.requestAnimFrame = (function(){
@@ -35,7 +36,7 @@ window.requestAnimFrame = (function(){
           window.oRequestAnimationFrame      || 
           window.msRequestAnimationFrame     || 
           function( callback ){
-            window.setTimeout(callback, 1000 / 60);
+            window.setTimeout(callback, 1000 / 30);
           };
 })();
 
@@ -71,7 +72,8 @@ var POP = {
     ua:  null,
     android: null,
     ios:  null,
-    socketAttr: ['type','r','speed','x','y','wavesize','xConstant','remove'],
+    socketAttrSlave: ['type','r','speed','x','y','wavesize','xConstant','remove'],
+    socketAttrMaster: ['type','remove'],
 
     init: function() {
 
@@ -79,6 +81,10 @@ var POP = {
         // Assign user ID
         socket.on('assignid', function (userID) { 
           POP.userID = userID;
+            socket.on('moving', function (data) {
+              // Start bringing in entities from the server
+              POP.socketFromServer(data, POP.userID > 0 ? 'socketAttrSlave' : 'socketAttrMaster');
+            });
         });  
         //console.log(POP.userID);
         // the proportion of width to height
@@ -191,6 +197,7 @@ var POP = {
     // and checked for collisions etc
     update: function() {
         var i,
+            hit,
             checkCollision = false; // we only need to check for a collision
                                 // if the user tapped on this game tick
  
@@ -223,34 +230,10 @@ var POP = {
             checkCollision = true;
         }
 
-        if (POP.userID > 0) {
-          socket.on('moving', function (data) {
-            for (i = 0; i < data.length; i += 1) {
-              for (z = 0; z < POP.socketAttr.length; z += 1) {
-                if (data[i] && typeof(data[i][POP.socketAttr[z]]) != 'undefined') {
-                  if (!POP.entities[i]) {
-                    POP.entities[i] = new POP.Bubble();
-                  }
-                  POP.entities[i][POP.socketAttr[z]] = data[i][POP.socketAttr[z]];
-                }
-              }
-            }
-           // console.log(POP.entities);
-          });
-        }
-
         // cycle through all entities and update as necessary
         for (i = 0; i < POP.entities.length; i += 1) {
-            //console.log(POP.entities);
-             POP.entities[i].update();
-            // if (!POP.socketON || POP.userID == 0) {
-            //     POP.entities[i].update();
-            // }
-            // else {
-            //     console.log('here');
 
-            //     POP.entities[i].update();
-            // }
+            POP.entities[i].update();
 
             if (POP.entities[i].type === 'bubble' && checkCollision) {
                 hit = POP.collides(POP.entities[i], 
@@ -263,23 +246,21 @@ var POP = {
                             POP.entities[i].y, 
                             2, 
                             // random opacity to spice it up a bit
-                            'rgba(255,255,255,'+Math.random()*1+')'
+                            'rgba(255,255,255,'+.2*1+')'
                         )); 
                     }
                     POP.score.hit += 1;
+                    POP.socketRemoveEntity(i);
                 }
-
                 POP.entities[i].remove = hit;
             }
 
             // delete from array if remove property
             // flag is set to true
-            if (POP.entities[i].remove) {
+            if (POP.entities[i].remove || POP.entities[i].y < 0) {
                 POP.entities.splice(i, 1);
             }
         }
-
-        
 
         // update wave offset
         // feel free to play with these values for
@@ -293,29 +274,33 @@ var POP = {
             0 :
             ~~(POP.score.accuracy); // a handy way to round floats
 
+        // Master user updates hit 
         if (POP.userID == 0) {
           POP.socketToServer();
         }
+        hit = false;
     },
-
+    socketRemoveEntity: function(i) { 
+      socket.emit('removeEntity',i);
+    },
     socketToServer: function() { 
-
-        var self = this;
-        //console.log(POP.entities);
-        socket.emit('mousemove',POP.entities);
-        POP.socketON = true;
-
+      var self = this;
+      socket.emit('sendmove',POP.entities);
+      POP.socketON = true;
     },
-
-    // socketFromServer: function() {
-
-    //     socket.on('moving', function (data) 
-    //     {
-    //         POP.entities = data;
-    //     });
-    // },
-
-
+    socketFromServer: function(data, attrName) {
+      // POP.entities = [];
+      for (i = 0; i < data.length; i += 1) {
+        for (z = 0; z < POP[attrName].length; z += 1) {
+          if (data[i] && typeof(data[i][POP[attrName][z]]) != 'undefined') {
+            if (!POP.entities[i]) {
+              POP.entities[i] = new POP.Bubble();
+            }
+            POP.entities[i][POP[attrName][z]] = data[i][POP[attrName][z]];
+          }
+        }
+      }
+    },
     // this is where we draw all the entities
     render: function() {
 
@@ -351,9 +336,7 @@ var POP = {
     // then proceeds to update
     // and render
     loop: function() {
-
         requestAnimFrame( POP.loop );
-
         POP.update();
         POP.render();
     }
@@ -500,12 +483,12 @@ POP.Particle = function(x, y,r, col) {
     // determines whether particle will
     // travel to the right of left
     // 50% chance of either happening
-    this.dir = (Math.random() * 2 > 1) ? 1 : -1;
+    this.dir = (.02 * 2 > 1) ? 1 : -1;
 
     // random values so particles do no
     // travel at the same speeds
-    this.vx = ~~(Math.random() * 4) * this.dir;
-    this.vy = ~~(Math.random() * 7);
+    this.vx = ~~(.02 * 4) * this.dir;
+    this.vy = ~~(.02 * 7);
 
     this.remove = false;
 
@@ -539,6 +522,8 @@ POP.Particle = function(x, y,r, col) {
     };
 
 };
+
+
 
 window.addEventListener('load', POP.init, false);
 window.addEventListener('resize', POP.resize, false);
