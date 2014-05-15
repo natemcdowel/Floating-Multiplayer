@@ -283,9 +283,9 @@ var POP = {
             ~~(POP.score.accuracy); // a handy way to round floats
 
         // Master user updates hit
-        // if (POP.userID == 0) {
+        if (POP.userID == 0) {
           POP.socketToServer();
-        // }
+        }
         hit = false;
     },
     socketRemoveEntity: function(i, userID, entityID) {
